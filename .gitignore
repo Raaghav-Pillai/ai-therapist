@@ -1,0 +1,11 @@
+# Environment variables
+.env
+
+# User data
+users.json
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd 

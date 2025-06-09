@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Therapist</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="page-container">
+        <div class="chat-container">
+            <div class="chat-header">
+                <h2>AI Therapist</h2>
+                <div class="header-actions">
+                    {% if session.username %}
+                        <span class="welcome-text">Welcome, {{ session.username }}!</span>
+                        <a href="/logout">Logout</a>
+                    {% else %}
+                        <a href="/login">Login</a>
+                        <a href="/register">Register</a>
+                    {% endif %}
+                    <button id="theme-toggle">☀️</button>
+                </div>
+            </div>
+            <div class="chat-box" id="chat-box">
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                    {% if messages %}
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ category }}">
+                                {{ message }}
+                            </div>
+                        {% endfor %}
+                    {% endif %}
+                {% endwith %}
+                
+                <!-- Messages will be dynamically inserted here by JavaScript -->
+            </div>
+            <div class="chat-form-container">
+                <div class="mode-switcher">
+                    <label class="switch">
+                        <input type="checkbox" id="mode-toggle">
+                        <span class="slider round"></span>
+                    </label>
+                    <span id="mode-label">Text Mode</span>
+                </div>
+                <form action="/" method="post" class="chat-form" id="text-form">
+                    <input type="text" class="form-control" name="message" placeholder="Message AI Therapist..." autofocus required>
+                    <button type="submit" class="btn btn-primary">Send</button>
+                </form>
+                <div id="voice-controls" style="display: none; text-align: center;">
+                    <button id="mic-button" class="mic-btn"><i class="fas fa-microphone"></i></button>
+                    <p id="mic-status" class="mic-status"></p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- THEME SWITCHER ---
+            const themeToggle = document.getElementById('theme-toggle');
+            const body = document.body;
+            const applyTheme = (theme) => {
+                body.setAttribute('data-theme', theme);
+                themeToggle.textContent = theme === 'dark' ? '🌙' : '☀️';
+                localStorage.setItem('theme', theme);
+            };
+            themeToggle.addEventListener('click', () => {
+                const newTheme = body.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+                applyTheme(newTheme);
+            });
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            applyTheme(savedTheme);
+
+            // --- CHAT AND VOICE MODE LOGIC ---
+            const modeToggle = document.getElementById('mode-toggle');
+            const modeLabel = document.getElementById('mode-label');
+            const textForm = document.getElementById('text-form');
+            const voiceControls = document.getElementById('voice-controls');
+            const micButton = document.getElementById('mic-button');
+            const micStatus = document.getElementById('mic-status');
+            const chatBox = document.getElementById('chat-box');
+
+            let isVoiceMode = false;
+            let recognition;
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+            if (SpeechRecognition) {
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.lang = 'en-US';
+                recognition.interimResults = false;
+
+                recognition.onstart = () => {
+                    micButton.classList.add('is-recording');
+                    micStatus.textContent = 'Listening...';
+                };
+
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript;
+                    addMessageToUI('user', transcript);
+                    sendMessageToServer(transcript);
+                };
+
+                recognition.onerror = (event) => {
+                    micStatus.textContent = `Error: ${event.error}`;
+                };
+
+                recognition.onend = () => {
+                    micButton.classList.remove('is-recording');
+                    micStatus.textContent = 'Click the mic to speak';
+                };
+            } else {
+                modeToggle.disabled = true;
+                modeLabel.textContent = 'Voice mode not supported by your browser.';
+            }
+
+            // --- EVENT LISTENERS ---
+            modeToggle.addEventListener('change', () => {
+                isVoiceMode = modeToggle.checked;
+                updateUIMode();
+            });
+
+            micButton.addEventListener('click', () => {
+                if (micButton.classList.contains('is-recording')) {
+                    recognition.stop();
+                } else {
+                    recognition.start();
+                }
+            });
+
+            textForm.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const input = e.target.elements.message;
+                const message = input.value.trim();
+                if (message) {
+                    addMessageToUI('user', message);
+                    sendMessageToServer(message);
+                    input.value = '';
+                }
+            });
+
+            // --- HELPER FUNCTIONS ---
+            const updateUIMode = () => {
+                if (isVoiceMode) {
+                    modeLabel.textContent = 'Voice Mode';
+                    textForm.style.display = 'none';
+                    voiceControls.style.display = 'block';
+                    micStatus.textContent = 'Click the mic to speak';
+                } else {
+                    modeLabel.textContent = 'Text Mode';
+                    textForm.style.display = 'flex';
+                    voiceControls.style.display = 'none';
+                }
+            };
+            
+            const speak = (text) => {
+                const utterance = new SpeechSynthesisUtterance(text);
+                speechSynthesis.speak(utterance);
+                utterance.onstart = () => micButton.disabled = true;
+                utterance.onend = () => micButton.disabled = false;
+            };
+
+            const addMessageToUI = (role, content) => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${role}`;
+                messageDiv.innerHTML = `<div class="content">${content}</div>`;
+                chatBox.appendChild(messageDiv);
+                chatBox.scrollTop = chatBox.scrollHeight;
+            };
+
+            const sendMessageToServer = async (message) => {
+                const formData = new FormData();
+                formData.append('message', message);
+
+                try {
+                    const response = await fetch('/', {
+                        method: 'POST',
+                        body: new URLSearchParams(formData)
+                    });
+                    
+                    if (response.ok) {
+                        const html = await response.text();
+                        const parser = new DOMParser();
+                        const doc = parser.parseFromString(html, 'text/html');
+                        const newChatBox = doc.getElementById('chat-box');
+                        chatBox.innerHTML = newChatBox.innerHTML;
+                        chatBox.scrollTop = chatBox.scrollHeight;
+
+                        const lastMessage = chatBox.querySelector('.message.assistant:last-child .content');
+                        if (isVoiceMode && lastMessage) {
+                            speak(lastMessage.textContent);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Error sending message:', error);
+                }
+            };
+
+            const loadHistory = () => {
+                const history = JSON.parse('{{ history_json | safe }}');
+                history.forEach(message => {
+                    if (message.role !== 'system') {
+                        addMessageToUI(message.role, message.content);
+                    }
+                });
+            };
+            
+            // Initial UI setup
+            loadHistory();
+            chatBox.scrollTop = chatBox.scrollHeight;
+        });
+    </script>
+</body>
+</html> 
