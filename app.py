@@ -22,7 +22,7 @@ client = OpenAI(
 )
 
 USERS_FILE = "users.json"
-SYSTEM_PROMPT = {"role": "system", "content": "You are a compassionate and empathetic AI therapist. Your goal is to listen, provide support, and help users explore their thoughts and feelings. Do not give medical advice."}
+SYSTEM_PROMPT = {"role": "system", "content": "You are an AI therapist. Your persona is that of a warm, empathetic, and down-to-earth friend who is a great listener. Your goal is to create a safe and comfortable space for users to share their thoughts and feelings. Sound natural, talk like a real person, not a machine. Use everyday language. Acknowledge and validate the user's feelings with phrases like 'That sounds really tough,' or 'I can understand why you'd feel that way.' Ask open-ended questions to encourage the user to talk more. Show genuine interest in their story. Do not give medical or clinical advice; your role is to help them explore their own feelings, not to solve their problems for them."}
 
 def load_user_data():
     """Loads user data from the JSON file."""
@@ -43,7 +43,7 @@ def get_response(conversation_history):
     """Gets a response from the AI model."""
     try:
         completion = client.chat.completions.create(
-            model="meta-llama/llama-3.3-8b-instruct:free",
+            model="meta-llama/llama-3-8b-instruct",
             messages=conversation_history,
         )
         return completion.choices[0].message.content
@@ -79,12 +79,11 @@ def index():
                 session["guest_history"] = history
             else:
                 users_data = load_user_data()
-                users_data[username]["history"] = history
-                save_user_data(users_data)
+                if "username" in session:
+                    users_data[session["username"]]["history"] = history
+                    save_user_data(users_data)
         
-        return redirect(url_for("index"))
-
-    return render_template("chat.html", history_json=json.dumps(history))
+    return render_template("chat.html", history_json=json.dumps(history), history=history)
 
 @app.route("/register", methods=["GET", "POST"])
 def register():
@@ -147,6 +146,16 @@ def logout():
     """Logs the user out."""
     session.pop("username", None)
     flash("You have been logged out.", "success")
+    return redirect(url_for("index"))
+
+@app.route("/clear")
+def clear():
+    """Clears the chat history."""
+    session.pop("guest_history", None)
+    if "username" in session:
+        users_data = load_user_data()
+        users_data[session["username"]]["history"] = [SYSTEM_PROMPT]
+        save_user_data(users_data)
     return redirect(url_for("index"))
 
 if __name__ == "__main__":

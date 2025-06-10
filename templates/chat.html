@@ -34,7 +34,15 @@
                     {% endif %}
                 {% endwith %}
                 
-                <!-- Messages will be dynamically inserted here by JavaScript -->
+                {% if history %}
+                {% for message in history %}
+                    {% if message.role != 'system' %}
+                    <div class="message {{ message.role }}">
+                        <div class="content">{{ message.content }}</div>
+                    </div>
+                    {% endif %}
+                {% endfor %}
+                {% endif %}
             </div>
             <div class="chat-form-container">
                 <div class="mode-switcher">
@@ -197,17 +205,7 @@
                 }
             };
 
-            const loadHistory = () => {
-                const history = JSON.parse('{{ history_json | safe }}');
-                history.forEach(message => {
-                    if (message.role !== 'system') {
-                        addMessageToUI(message.role, message.content);
-                    }
-                });
-            };
-            
             // Initial UI setup
-            loadHistory();
             chatBox.scrollTop = chatBox.scrollHeight;
         });
     </script>
