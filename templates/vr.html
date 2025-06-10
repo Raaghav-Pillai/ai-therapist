@@ -1,0 +1,103 @@
+<!-- ... existing code ... -->
+    <!-- AI Presence "Bubble" -->
+    <a-sphere
+        id="ai-bubble"
+        position="1.5 1.2 -1.8"
+        radius="0.3"
+        color="#00BCD4"
+        opacity="0.6"
+        animation="property: scale; to: 1.1 1.1 1.1; dir: alternate; loop: true; dur: 2000; easing: easeInOutSine">
+    </a-sphere>
+
+    <!-- Camera (User's Position on the Sofa) -->
+    <a-entity id="user-camera" camera look-controls position="-1.8 1.2 -1.2" rotation="0 45 0">
+        <!-- "Talk" button attached to the camera -->
+        <a-entity id="talk-button"
+            geometry="primitive: plane; width: 0.4; height: 0.15"
+            material="color: #4CAF50; shader: flat"
+            position="0 -0.5 -1"
+            text="value: Talk; align: center; color: white; width: 2">
+        </a-entity>
+    </a-entity>
+</a-scene>
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    const talkButton = document.getElementById('talk-button');
+    const aiBubble = document.getElementById('ai-bubble');
+    let recognition;
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.lang = 'en-US';
+        recognition.interimResults = false;
+
+        recognition.onstart = () => {
+            talkButton.setAttribute('material', 'color', '#F44336'); // Red when listening
+            talkButton.setAttribute('text', 'value', 'Listening...');
+        };
+
+        recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            sendMessageToServer(transcript);
+        };
+
+        recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            talkButton.setAttribute('material', 'color', '#4CAF50'); // Green
+            talkButton.setAttribute('text', 'value', 'Talk');
+        };
+
+        recognition.onend = () => {
+            talkButton.setAttribute('material', 'color', '#4CAF50'); // Green
+            talkButton.setAttribute('text', 'value', 'Talk');
+        };
+
+        talkButton.addEventListener('click', () => {
+            recognition.start();
+        });
+
+    } else {
+        talkButton.setAttribute('text', 'value', 'Voice Not Supported');
+    }
+    
+    const speak = (text) => {
+        const utterance = new SpeechSynthesisUtterance(text);
+        // Animate bubble while speaking
+        aiBubble.setAttribute('animation__speak', {
+            property: 'material.color',
+            to: '#FFEB3B',
+            dir: 'alternate',
+            loop: true,
+            dur: 500
+        });
+
+        utterance.onend = () => {
+            // Stop animation when done
+            aiBubble.removeAttribute('animation__speak');
+            aiBubble.setAttribute('material', 'color', '#00BCD4');
+        };
+        speechSynthesis.speak(utterance);
+    };
+
+    const sendMessageToServer = async (message) => {
+        try {
+            const response = await fetch('/vr-chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: message })
+            });
+            const data = await response.json();
+            if (data.reply) {
+                speak(data.reply);
+            }
+        } catch (error) {
+            console.error('Error sending message to server:', error);
+            speak("I'm sorry, I'm having trouble connecting right now.");
+        }
+    };
+});
+</script>
+</body>
+</html>

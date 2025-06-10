@@ -1,6 +1,6 @@
 import os
 import json
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from werkzeug.security import generate_password_hash, check_password_hash
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -147,6 +147,50 @@ def logout():
     session.pop("username", None)
     flash("You have been logged out.", "success")
     return redirect(url_for("index"))
+
+@app.route("/vr")
+def vr():
+    """Renders the VR experience page."""
+    return render_template("vr.html")
+
+@app.route('/vr-chat', methods=['POST'])
+def vr_chat():
+    """Handles the voice-to-voice chat in the VR environment."""
+    data = request.get_json()
+    user_message = data.get('message')
+
+    if not user_message:
+        return jsonify({"error": "No message provided"}), 400
+
+    history = []
+    is_guest = "username" not in session
+
+    if is_guest:
+        if "guest_history" not in session:
+            session["guest_history"] = [SYSTEM_PROMPT]
+        history = session["guest_history"]
+    else:
+        username = session["username"]
+        users_data = load_user_data()
+        history = users_data.get(username, {}).get("history", [SYSTEM_PROMPT])
+    
+    # Append user message and get AI response
+    history.append({'role': 'user', 'content': user_message})
+    response_text = get_response(history)
+    history.append({'role': 'assistant', 'content': response_text})
+    
+    # Save the updated history
+    if is_guest:
+        session["guest_history"] = history
+    else:
+        users_data = load_user_data()
+        if "username" in session:
+            users_data[session["username"]]["history"] = history
+            save_user_data(users_data)
+    
+    session.modified = True
+
+    return jsonify({"reply": response_text})
 
 @app.route("/clear")
 def clear():
